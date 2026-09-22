@@ -9,6 +9,7 @@ from loguru import logger
 from .dist_table import DistTable
 from .mapf_utils import Config, Configs, Coord, Deadline, Grid, get_neighbors
 from .pibt import PIBT
+from .traffic_load import TrafficLoad, TrafficLoadConfig
 
 
 @dataclass
@@ -62,6 +63,7 @@ class LaCAM:
         flg_star: bool = True,
         seed: int = 0,
         verbose: int = 1,
+        load_cfg: TrafficLoadConfig | None = None,
     ) -> Configs:
         # set problem
         self.num_agents: int = len(starts)
@@ -75,6 +77,7 @@ class LaCAM:
         self.flg_star: bool = flg_star
         self.rng: np.random.Generator = np.random.default_rng(seed=seed)
         self.verbose = verbose
+        self.load_cfg = load_cfg if load_cfg is not None else TrafficLoadConfig()
         return self._solve()
 
     def _solve(self) -> Configs:
@@ -83,8 +86,16 @@ class LaCAM:
         # set distance tables
         self.dist_tables = [DistTable(self.grid, g) for g in self.goals]
 
+        # set traffic load guidance
+        self.traffic_load: TrafficLoad | None = None
+        if self.load_cfg.enabled:
+            self.traffic_load = TrafficLoad(self.grid, self.goals, self.load_cfg)
+            if self.load_cfg.update == "start":
+                self.traffic_load.rebuild(self.starts)
+            self.info(1, f"traffic load ready, {self.load_cfg}")
+
         # set PIBT
-        self.pibt = PIBT(self.dist_tables)
+        self.pibt = PIBT(self.dist_tables, traffic_load=self.traffic_load)
 
         # set search scheme
         OPEN: deque[HighLevelNode] = deque([])
@@ -178,6 +189,8 @@ class LaCAM:
             self.info(1, "detected unsolvable instance")
         else:
             self.info(1, "failure due to timeout")
+        if self.traffic_load is not None:
+            self.info(1, f"traffic load stats: {self.traffic_load.stats}")
         return self.backtrack(N_goal)
 
     @staticmethod

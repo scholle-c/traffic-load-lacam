@@ -1,0 +1,55 @@
+# py-lacam-pibt fork with traffic load guidance in PIBT's candidate ordering.
+# Copy into MAPF Evaluator/solvers/. Compare e.g.
+#   uv run mapf-eval compare traffic_load_lacam:vanilla traffic_load_lacam:tb_step ...
+name: traffic_load_lacam
+label: py-LaCAM + traffic load
+description: Pure-Python LaCAM with traffic-load-aware PIBT (fork of py-lacam)
+
+cwd: "${MAPF_ROOT}/MAPF Algos/MyAlgos/traffic-load-lacam"
+requires: [".venv/bin/python", "app.py"]
+setup:
+  - "uv sync --all-extras"
+timeout_grace: 30
+
+command:
+  - ".venv/bin/python"
+  - "app.py"
+  - "-m"
+  - "{map}"
+  - "-i"
+  - "{scen}"
+  - "-N"
+  - "{agents}"
+  - "-o"
+  - "{run_dir}/plan.txt"
+  - "-t"
+  - "{timeout_ms}"
+  - "-s"
+  - "{seed}"
+  - "-v"
+  - "0"
+  - "--no-flg_star"
+
+plan:
+  file: "{run_dir}/plan.txt"
+  format: lacam_configs
+
+unsolved_when:
+  - "invalid solution, empty"
+
+variants:
+  vanilla:
+    label: "py-LaCAM (vanilla)"
+    args: ["--load-mode", "off"]
+  tb_step:
+    label: "py-LaCAM + load (tiebreak, per step)"
+    args: ["--load-mode", "tiebreak", "--load-window", "10", "--load-update", "step"]
+  tb_agent:
+    label: "py-LaCAM + load (tiebreak, per agent)"
+    args: ["--load-mode", "tiebreak", "--load-window", "10", "--load-update", "agent"]
+  tb_start:
+    label: "py-LaCAM + load (tiebreak, static)"
+    args: ["--load-mode", "tiebreak", "--load-window", "10", "--load-update", "start"]
+  pen01_step:
+    label: "py-LaCAM + load (penalty 0.1, per step)"
+    args: ["--load-mode", "penalty", "--load-lambda", "0.1", "--load-window", "10", "--load-update", "step"]

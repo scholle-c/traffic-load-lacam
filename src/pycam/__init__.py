@@ -3,6 +3,7 @@ import sys
 from loguru import logger
 
 from .lacam import LaCAM
+from .traffic_load import TrafficLoad, TrafficLoadConfig
 from .mapf_utils import (
     get_grid,
     get_scenario,
@@ -28,4 +29,6 @@ __all__ = [
     "validate_mapf_solution",
     "get_sum_of_loss",
     "LaCAM",
+    "TrafficLoad",
+    "TrafficLoadConfig",
 ]

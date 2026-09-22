@@ -7,14 +7,23 @@ import numpy as np
 
 from .dist_table import DistTable
 from .mapf_utils import Config, Coord, get_neighbors
+from .traffic_load import TrafficLoad
 
 
 class PIBT:
-    def __init__(self, dist_tables: list[DistTable], seed: int = 0) -> None:
+    def __init__(
+        self,
+        dist_tables: list[DistTable],
+        seed: int = 0,
+        traffic_load: TrafficLoad | None = None,
+    ) -> None:
         self.N = len(dist_tables)
         assert self.N > 0
         self.dist_tables = dist_tables
         self.grid = self.dist_tables[0].grid
+
+        # traffic load guidance (None -> vanilla PIBT)
+        self.load = traffic_load if (traffic_load and traffic_load.cfg.enabled) else None
 
         # cache
         self.NIL = self.N  # meaning \bot
@@ -31,7 +40,7 @@ class PIBT:
         # get candidate next vertices
         C = [Q_from[i]] + get_neighbors(self.grid, Q_from[i])
         self.rng.shuffle(C)  # tie-breaking, randomize
-        C = sorted(C, key=lambda u: self.dist_tables[i].get(u))
+        C = sorted(C, key=self.sort_key(i))
 
         # vertex assignment
         for v in C:
@@ -48,6 +57,8 @@ class PIBT:
             # reserve next location
             Q_to[i] = v
             self.occupied_nxt[v] = i
+            if self.load is not None:
+                self.load.commit(i, v)
 
             # priority inheritance (j != i due to the second condition)
             if (
@@ -62,7 +73,19 @@ class PIBT:
         # failed to secure node
         Q_to[i] = Q_from[i]
         self.occupied_nxt[Q_from[i]] = i
+        if self.load is not None:
+            self.load.commit(i, Q_from[i])
         return False
+
+    def sort_key(self, i: int):
+        dist = self.dist_tables[i].get
+        if self.load is None:
+            return dist
+        load = self.load
+        if load.cfg.mode == "tiebreak":
+            return lambda u: (dist(u), load.load_for(i, u))
+        lam = load.cfg.lam
+        return lambda u: dist(u) + lam * load.load_for(i, u)
 
     def step(
         self,
@@ -71,6 +94,10 @@ class PIBT:
         order: list[int],
     ) -> bool:
         flg_success = True
+
+        # traffic load for this configuration
+        if self.load is not None and self.load.cfg.update != "start":
+            self.load.rebuild(Q_from)
 
         # setup
         for i, (v_i_from, v_i_to) in enumerate(zip(Q_from, Q_to)):
@@ -100,5 +127,7 @@ class PIBT:
             self.occupied_now[q_from] = self.NIL
             if q_to != self.NIL_COORD:
                 self.occupied_nxt[q_to] = self.NIL
+        if self.load is not None:
+            self.load.restore()
 
         return flg_success
